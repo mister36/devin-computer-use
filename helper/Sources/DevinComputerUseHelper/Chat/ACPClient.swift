@@ -32,6 +32,7 @@ final class ACPClient {
     private var pending: [String: (Result<JSONValue, ACPError>) -> Void] = [:]
     private var readBuffer = Data()
     private let writeLock = NSLock()
+    private let pendingLock = NSLock()
     private let stderrLog: URL
 
     init(supportDir: URL) {
@@ -74,8 +75,10 @@ final class ACPClient {
     }
 
     private func failPending(_ error: ACPError) {
+        pendingLock.lock()
         let completions = pending
         pending.removeAll()
+        pendingLock.unlock()
         for completion in completions.values {
             completion(.failure(error))
         }
@@ -84,14 +87,19 @@ final class ACPClient {
     private func stderrLoop(_ handle: FileHandle) {
         FileManager.default.createFile(atPath: stderrLog.path, contents: nil)
         let log = try? FileHandle(forWritingTo: stderrLog)
-        while let data = try? handle.read(upToCount: 65_536), !data.isEmpty {
+        while true {
+            let data = handle.availableData
+            if data.isEmpty { break }
             try? log?.write(contentsOf: data)
         }
     }
 
     private func readLoop(_ handle: FileHandle) {
         while true {
-            guard let data = try? handle.read(upToCount: 65_536), !data.isEmpty else { break }
+            // availableData returns as soon as any bytes arrive; read(upToCount:)
+            // on a pipe blocks until the full count or EOF.
+            let data = handle.availableData
+            guard !data.isEmpty else { break }
             readBuffer.append(data)
             while let newline = readBuffer.firstIndex(of: UInt8(ascii: "\n")) {
                 let line = readBuffer[readBuffer.startIndex..<newline]
@@ -125,7 +133,10 @@ final class ACPClient {
             }
         } else if let id = message.id {
             let key = idKey(id)
-            if let completion = pending.removeValue(forKey: key) {
+            pendingLock.lock()
+            let completion = pending.removeValue(forKey: key)
+            pendingLock.unlock()
+            if let completion {
                 if let error = message.error {
                     let code = error.objectValue?["code"]?.intValue ?? -32000
                     let text = error.objectValue?["message"]?.stringValue ?? "JSON-RPC error"
@@ -162,9 +173,11 @@ final class ACPClient {
             completion(.failure(ACPError(-32000, "devin acp is not running")))
             return
         }
+        pendingLock.lock()
         let id = nextId
         nextId += 1
         pending["n:\(Double(id))"] = completion
+        pendingLock.unlock()
         write([
             "id": .number(Double(id)),
             "method": .string(method),
