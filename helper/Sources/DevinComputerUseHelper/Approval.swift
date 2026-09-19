@@ -14,9 +14,11 @@ final class ChatApprovalPresenter: ApprovalPresenter {
         let semaphore = DispatchSemaphore(value: 0)
         var decision: Approval.Decision = .cancel
         DispatchQueue.main.async {
-            ChatStore.shared.requestAppApproval(appName: appName) { answer in
-                decision = answer
-                semaphore.signal()
+            MainActor.assumeIsolated {
+                ChatStore.shared.requestAppApproval(appName: appName) { answer in
+                    decision = answer
+                    semaphore.signal()
+                }
             }
             NSApp.activate(ignoringOtherApps: true)
         }
@@ -158,8 +160,15 @@ final class Approval {
     }
 
     private func chatWindowAvailable() -> Bool {
-        DispatchQueue.main.sync {
-            ChatStore.shared.canPresentApproval
+        if Thread.isMainThread {
+            return MainActor.assumeIsolated {
+                ChatStore.shared.canPresentApproval
+            }
+        }
+        return DispatchQueue.main.sync {
+            MainActor.assumeIsolated {
+                ChatStore.shared.canPresentApproval
+            }
         }
     }
 
