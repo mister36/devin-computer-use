@@ -95,9 +95,14 @@ final class SocketServer {
         var response: HelperResponse
         do {
             let request = try JSONDecoder().decode(HelperRequest.self, from: line)
-            // AX/CGEvent work must happen on the main thread.
-            response = DispatchQueue.main.sync {
-                RequestHandler.shared.handle(request)
+            // Approval runs on the socket thread first: the chat-window card
+            // path blocks on a semaphore, which would deadlock on main.
+            if let failure = RequestHandler.shared.preflight(request) {
+                response = failure
+            } else {
+                response = DispatchQueue.main.sync {
+                    RequestHandler.shared.handle(request)
+                }
             }
         } catch {
             response = HelperResponse.failure(id: 0, code: "bad_request", message: "Invalid request: \(error)")

@@ -1,7 +1,7 @@
 import AppKit
 
 let app = NSApplication.shared
-app.setActivationPolicy(.accessory) // LSUIElement menu-bar app
+app.setActivationPolicy(.regular) // dock icon + menu-bar status item
 
 let delegate = AppDelegate()
 app.delegate = delegate

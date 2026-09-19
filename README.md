@@ -3,13 +3,31 @@
 Give Devin CLI ChatGPT-style Computer Use on macOS: see and operate any app
 through the OS accessibility layer instead of driving Chrome over CDP.
 
-A native menu-bar helper app uses the macOS Accessibility API (AXUIElement) to
+A native desktop app uses the macOS Accessibility API (AXUIElement) to
 read UI trees and trigger actions, screen capture for window screenshots, and
 CGEvent synthetic input posted directly to the target process so it works in
 the background without stealing your cursor. The tools are exposed to Devin as
 an MCP server (`list_apps`, `get_app_state`, `click`, `type_text`,
 `press_key`, `scroll`, `drag`, `open_app`, `wait`) plus an agent skill that
 teaches the observe → act loop.
+
+## Desktop app
+
+`build-app` produces a ChatGPT-style desktop app: a chat window (sidebar of
+conversations, streamed transcript, tool-call cards, inline permission prompts)
+that talks to Devin CLI over the Agent Client Protocol — no terminal needed.
+The MCP server is bundled inside the app, so chat works out of the box:
+
+```sh
+devin-computer-use build-app
+devin-computer-use open-app
+```
+
+On first launch the app walks you through onboarding (Devin CLI installed,
+signed in, Node.js, Accessibility, Screen Recording). Then chat: "list my
+apps", "open Notes and write a grocery list". The app also keeps its menu-bar
+icon and Unix socket for terminal-based Devin CLI — `devin-computer-use
+install` remains optional for that flow.
 
 `get_app_state` returns a compact, depth-limited AX tree with element indices
 and a screenshot in a single call; later calls return only a diff of the tree.
@@ -101,8 +119,10 @@ screenshot pixels.
   prompts per tool call. To pre-approve the read-only tools, allow
   `mcp__computer-use__list_apps`, `mcp__computer-use__get_app_state` and
   `mcp__computer-use__wait` individually in Devin's `permissions.allow` list.
-- The app is ad-hoc signed by default so TCC grants survive rebuilds while the
-  bundle id stays `ai.devin.computer-use.helper`. For distribution, sign with a
+- The app is ad-hoc signed by default (bundle id `ai.devin.computer-use.helper`);
+  every rebuild changes the cdhash, so Accessibility and Screen Recording must
+  be re-granted after `build-app` unless you set `CODESIGN_IDENTITY`. For
+  distribution, sign with a
   Developer ID and notarize (`xcrun notarytool`); the bundle is not sandboxed
   because the Accessibility API requires it.
 
