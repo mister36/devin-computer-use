@@ -58,8 +58,10 @@ enum Toolchain {
            FileManager.default.fileExists(atPath: dev) {
             return dev
         }
-        return Bundle.main.resourceURL?
-            .appendingPathComponent("server/src/server.mjs").path
-            .flatMap { FileManager.default.fileExists(atPath: $0) ? $0 : nil }
+        guard let path = Bundle.main.resourceURL?
+            .appendingPathComponent("server/src/server.mjs").path,
+              FileManager.default.fileExists(atPath: path)
+        else { return nil }
+        return path
     }
 }

@@ -387,40 +387,40 @@ final class ChatStore: ObservableObject {
     // MARK: session/update notifications
 
     private func handleSessionUpdate(_ params: JSONValue) {
-        guard let update = params.objectValue?["update"]?.objectValue,
-              let kind = update["sessionUpdate"]?.stringValue,
+        guard let payload = params.objectValue?["update"]?.objectValue,
+              let kind = payload["sessionUpdate"]?.stringValue,
               let sessionId = params.objectValue?["sessionId"]?.stringValue,
               let conversationId = conversations.first(where: { $0.acpSessionId == sessionId })?.id
         else { return }
 
         switch kind {
         case "agent_message_chunk":
-            let text = update["content"]?.objectValue?["text"]?.stringValue ?? ""
-            let messageId = update["messageId"]?.stringValue ?? "assistant"
+            let text = payload["content"]?.objectValue?["text"]?.stringValue ?? ""
+            let messageId = payload["messageId"]?.stringValue ?? "assistant"
             appendStreamed(text, messageId: messageId, kind: .assistant, to: conversationId)
         case "agent_thought_chunk":
-            let text = update["content"]?.objectValue?["text"]?.stringValue ?? ""
+            let text = payload["content"]?.objectValue?["text"]?.stringValue ?? ""
             appendStreamed(text, messageId: "thought", kind: .thought, to: conversationId)
         case "user_message_chunk":
             break // we already appended the user item
         case "tool_call":
             let item = TranscriptItem.toolCall(
-                id: update["toolCallId"]?.stringValue ?? UUID().uuidString,
-                title: update["title"]?.stringValue ?? "Tool call",
-                kind: update["kind"]?.stringValue ?? "other",
-                status: update["status"]?.stringValue ?? "pending",
-                content: toolContents(update["content"])
+                id: payload["toolCallId"]?.stringValue ?? UUID().uuidString,
+                title: payload["title"]?.stringValue ?? "Tool call",
+                kind: payload["kind"]?.stringValue ?? "other",
+                status: payload["status"]?.stringValue ?? "pending",
+                content: toolContents(payload["content"])
             )
             append(item, to: conversationId)
         case "tool_call_update":
-            guard let toolCallId = update["toolCallId"]?.stringValue else { return }
+            guard let toolCallId = payload["toolCallId"]?.stringValue else { return }
             update(conversationId) { conv in
                 for index in conv.items.indices {
                     if case .toolCall(let id, var title, let kind, var status, var content) = conv.items[index],
                        id == toolCallId {
-                        if let t = update["title"]?.stringValue { title = t }
-                        if let s = update["status"]?.stringValue { status = s }
-                        let newContent = toolContents(update["content"])
+                        if let t = payload["title"]?.stringValue { title = t }
+                        if let s = payload["status"]?.stringValue { status = s }
+                        let newContent = toolContents(payload["content"])
                         if !newContent.isEmpty { content = newContent }
                         conv.items[index] = .toolCall(id: id, title: title, kind: kind,
                                                       status: status, content: content)
@@ -428,7 +428,7 @@ final class ChatStore: ObservableObject {
                 }
             }
         case "plan":
-            let entries = (update["entries"]?.arrayValue ?? []).map { entry -> PlanEntry in
+            let entries = (payload["entries"]?.arrayValue ?? []).map { entry -> PlanEntry in
                 let object = entry.objectValue
                 return PlanEntry(content: object?["content"]?.stringValue ?? "",
                                  status: object?["status"]?.stringValue ?? "pending")

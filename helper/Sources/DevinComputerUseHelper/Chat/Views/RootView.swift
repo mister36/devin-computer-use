@@ -85,7 +85,7 @@ final class OnboardingChecks: ObservableObject {
     @Published var allPass = false
 
     func recheck() {
-        let installAction = { [weak self] in self?.installDevinCLI() }
+        let installAction: () -> Void = { [weak self] in self?.installDevinCLI() }
         let signInAction = { Self.openDevinLogin() }
         Task {
             let devin = Toolchain.find("devin") != nil
