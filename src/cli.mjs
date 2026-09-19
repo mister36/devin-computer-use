@@ -189,9 +189,11 @@ function mark(ok) {
 async function doctor({ project }) {
   let failed = false;
   const checks = [];
-  const add = (ok, label, detail) => {
-    checks.push({ ok, label, detail });
-    failed ||= !ok;
+  const add = (ok, label, detail, { warn = false } = {}) => {
+    checks.push({ ok, label, detail, warn });
+    if (!warn) {
+      failed ||= !ok;
+    }
   };
 
   add(supportsNodeVersion(process.versions.node), "Node.js", process.version);
@@ -207,6 +209,10 @@ async function doctor({ project }) {
 
   const appPath = join(homedir(), "Applications", `${APP_NAME}.app`);
   add(!isMac || existsSync(appPath), "Helper app", existsSync(appPath) ? appPath : `missing at ${appPath}`);
+
+  const bundledServer = join(appPath, "Contents", "Resources", "server", "src", "server.mjs");
+  add(!isMac || existsSync(bundledServer), "Bundled MCP server",
+    existsSync(bundledServer) ? bundledServer : "missing (re-run build-app)", { warn: true });
 
   const socket = process.env.DEVIN_COMPUTER_USE_SOCKET || defaultSocketPath();
   try {
@@ -230,7 +236,8 @@ async function doctor({ project }) {
   }
 
   for (const check of checks) {
-    console.log(`${mark(check.ok)}  ${check.label}: ${check.detail}`);
+    const tag = check.ok ? "PASS" : check.warn ? "WARN" : "FAIL";
+    console.log(`${tag}  ${check.label}: ${check.detail}`);
   }
 
   if (failed) {

@@ -166,11 +166,56 @@ re-issued each observation and the server maps old→new for the `~` lines.
   (`list_apps`, `get_app_state`, `wait`) and, optionally, the rest once the
   helper's per-app gate is trusted.
 
+## Chat window (ChatGPT-style desktop UI)
+
+The app is a regular windowed app (dock icon + menu-bar status item, no
+`LSUIElement`). The main window mimics the ChatGPT desktop app so all
+computer-use work happens inside it, never in a terminal:
+
+- `NavigationSplitView`: sidebar of conversations (title = first user message,
+  persisted as JSON under `~/Library/Application Support/DevinComputerUse/conversations/`),
+  transcript in the middle, composer at the bottom ("Work with Devin", send /
+  Stop button, "Approve for me" toggle, model label = "Devin CLI").
+- The transcript renders: user bubbles, streamed assistant text, tool-call
+  cards (title, status spinner/check, kind icon; expanded content shows text
+  and image blocks — screenshots returned by `computer-use` tools appear as
+  thumbnails), plan entries, and inline permission cards.
+- Devin is embedded through the **Agent Client Protocol**: the app spawns
+  `devin acp` as a child process and speaks JSON-RPC 2.0 (newline-delimited)
+  over its stdin/stdout:
+  - `initialize {protocolVersion:1, clientCapabilities:{fs:{readTextFile:false,writeTextFile:false},terminal:false}}`
+  - `session/new {cwd, mcpServers:[{name:"computer-use", command:<node>, args:[<server.mjs>], env:[]}]}`
+    — the MCP server is bundled at `Contents/Resources/server/` (src/, node_modules/, package.json)
+    so no `devin-computer-use install` step is required for the app.
+  - `session/prompt {sessionId, prompt:[{type:"text",text}]}` → response `{stopReason}` ends the turn.
+  - Agent → client notifications `session/update` with `sessionUpdate` in
+    `agent_message_chunk | user_message_chunk | agent_thought_chunk | tool_call | tool_call_update | plan | usage_update | available_commands_update | current_mode_update`.
+  - Agent → client request `session/request_permission {toolCall, options:[{optionId,name,kind}]}`;
+    the app answers `{outcome:{outcome:"selected",optionId}}` (or `cancelled` after
+    `session/cancel`). With "Approve for me" on, the app auto-picks the first
+    `allow_always` option, else `allow_once`.
+  - `session/cancel` on Stop. If `agentCapabilities.loadSession` is true a
+    reopened conversation calls `session/load`; otherwise it starts a fresh session.
+- Helper per-app approval ("Allow Devin to use Safari?") is shown as an inline
+  card in the active conversation when the window is open, falling back to the
+  `NSAlert` otherwise. The socket thread blocks on a semaphore until answered.
+- Onboarding pane (shown until every check passes): Devin CLI found
+  (`~/.local/bin/devin` or `command -v devin` via `/bin/zsh -lc`), signed in
+  (`devin auth status` exit code), Node found, Accessibility, Screen Recording.
+  Each row has a fix button: "Install Devin CLI" runs
+  `curl -fsSL https://cli.devin.ai/install.sh | bash` in-app with streamed
+  output; "Sign in" opens Terminal with `devin auth login` (needs a TTY);
+  permission rows open the matching System Settings pane.
+- Toolchain discovery runs through `/bin/zsh -lc 'command -v node devin'`
+  so Homebrew/nvm/volta paths work when launched from Finder.
+
 ## Distribution
 
 - `npm run build:app` (`scripts/build-app.sh`) runs `swift build -c release`,
-  assembles `Devin Computer Use.app` (Info.plist with `LSUIElement=1`,
-  `NSAccessibilityUsageDescription`, bundle id `ai.devin.computer-use.helper`),
+  assembles `Devin Computer Use.app` (regular windowed app —
+  `NSAccessibilityUsageDescription`, bundle id `ai.devin.computer-use.helper`)
+  and bundles the MCP server into `Contents/Resources/server/` (src/,
+  package.json, production node_modules),
   ad-hoc signs it (`codesign --force --deep -s -`) and copies it to
   `~/Applications`. A stable bundle id + stable signing identity keeps TCC
   grants across rebuilds; ad-hoc signing means a rebuild can require re-granting.
@@ -189,8 +234,9 @@ devin-computer-use/
   src/tree.mjs           formatTree, diffTrees, normalise
   src/tools.mjs          tool schemas + handlers (pure, testable with a fake client)
   helper/Package.swift
-  helper/Sources/DevinComputerUse/{main.swift, App.swift(menu bar), Server.swift(socket+JSONL),
-        Accessibility.swift, Screenshot.swift, Input.swift, Approval.swift, Protocol.swift}
+  helper/Sources/DevinComputerUseHelper/{main.swift, App.swift(window+menu bar), Server.swift(socket+JSONL),
+        Accessibility.swift, Screenshot.swift, Input.swift, Approval.swift, Protocol.swift,
+        Chat/{ACPClient.swift, ChatStore.swift, Toolchain.swift, Views/}}
   helper/Info.plist
   scripts/build-app.sh
   .agents/skills/computer-use/SKILL.md

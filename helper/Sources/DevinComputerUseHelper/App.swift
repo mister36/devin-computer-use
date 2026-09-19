@@ -1,25 +1,40 @@
 import AppKit
 import Darwin
 import Foundation
+import SwiftUI
 
-// Menu-bar app: status icon, allowed-apps management, settings shortcuts,
-// owns the socket server and the request handler.
-final class AppDelegate: NSObject, NSApplicationDelegate {
+// Regular windowed app (dock icon + menu-bar status item): the main window
+// hosts the chat UI; the socket server keeps running when it is closed.
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var statusItem: NSStatusItem!
     private var server: SocketServer!
     private let statusMenuItem = NSMenuItem()
-    private var allowedWindow: NSWindow?
+    private var mainWindow: NSWindow?
 
     var socketPath: String {
         Approval.shared.supportDir.appendingPathComponent("helper.sock").path
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        let hosting = NSHostingController(rootView: RootView())
+        let window = NSWindow(contentViewController: hosting)
+        window.title = "Devin Computer Use"
+        window.minSize = NSSize(width: 900, height: 600)
+        window.setContentSize(NSSize(width: 1000, height: 700))
+        window.delegate = self
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+        mainWindow = window
+        NSApp.activate(ignoringOtherApps: true)
+
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.title = "◉"
         statusItem.button?.toolTip = "Devin Computer Use"
 
         let menu = NSMenu()
+        let open = NSMenuItem(title: "Open Devin Computer Use", action: #selector(showMainWindow), keyEquivalent: "")
+        open.target = self
+        menu.addItem(open)
         statusMenuItem.title = statusLine()
         statusMenuItem.isEnabled = false
         menu.addItem(statusMenuItem)
@@ -97,6 +112,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.terminate(nil)
     }
 
+    @objc private func showMainWindow() {
+        mainWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    // Closing the window hides it; the app keeps running for the socket.
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        sender.orderOut(nil)
+        return false
+    }
+
+    // Dock click re-shows the main window.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag {
+            showMainWindow()
+        }
+        return true
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         server?.stop()
     }
@@ -111,6 +145,38 @@ final class RequestHandler {
     private(set) var isBusy = false
 
     private let reader = TreeReader()
+
+    // Apps already approved on the socket thread, keyed by request id.
+    private var approvedApps: [Int: ResolvedApp] = [:]
+    private let approvalLock = NSLock()
+
+    /// Runs on the socket thread BEFORE the main hop: resolves the app param
+    /// and passes it through the approval gate (which may block on a
+    /// semaphore waiting for a chat-window card — safe off-main only).
+    /// Returns an error response on denial/failure, nil to proceed.
+    func preflight(_ request: HelperRequest) -> HelperResponse? {
+        switch request.method {
+        case "ping", "list_apps", "open_app":
+            return nil
+        default:
+            break
+        }
+        guard let spec = request.params?["app"]?.stringValue else {
+            return nil // let dispatch report bad_request on the main thread
+        }
+        do {
+            let app = try AppResolver.resolve(spec)
+            try Approval.shared.check(appName: app.name, bundleId: app.bundleId)
+            approvalLock.lock()
+            approvedApps[request.id] = app
+            approvalLock.unlock()
+            return nil
+        } catch let error as HelperException {
+            return .failure(id: request.id, code: error.code, message: error.message)
+        } catch {
+            return .failure(id: request.id, code: "internal", message: "\(error)")
+        }
+    }
 
     func handle(_ request: HelperRequest) -> HelperResponse {
         isBusy = true
@@ -187,13 +253,21 @@ final class RequestHandler {
         }
     }
 
-    /// Resolve the app param and pass it through the approval gate.
+    /// Resolve the app param (reusing the pre-approved app from preflight
+    /// when present) and check Accessibility permission.
     private func gatedApp(_ request: HelperRequest) throws -> ResolvedApp {
-        let spec = try requireString(request, "app")
         guard Screenshot.requestAccessibility() else {
             throw HelperException("permission_required",
                                   "Accessibility access is not granted. Enable \"Devin Computer Use\" in System Settings > Privacy & Security > Accessibility.")
         }
+        approvalLock.lock()
+        let approved = approvedApps.removeValue(forKey: request.id)
+        approvalLock.unlock()
+        if let approved {
+            return approved
+        }
+        // No preflight (e.g. missing app param resolved by spec validation).
+        let spec = try requireString(request, "app")
         let app = try AppResolver.resolve(spec)
         try Approval.shared.check(appName: app.name, bundleId: app.bundleId)
         return app

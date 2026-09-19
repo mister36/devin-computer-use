@@ -34,6 +34,20 @@ cp "$BINARY" "$APP/Contents/MacOS/DevinComputerUseHelper"
 cp "$HELPER_DIR/Info.plist" "$APP/Contents/Info.plist"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 
+# Bundle the MCP server (src/ + production node_modules) into Resources/ so
+# the chat window can spawn it without a separate install step.
+echo "==> bundling MCP server into Resources/server"
+SERVER_RES="$APP/Contents/Resources/server"
+mkdir -p "$SERVER_RES"
+cp "$ROOT/package.json" "$SERVER_RES/"
+cp -R "$ROOT/src" "$SERVER_RES/"
+STAGE="$(mktemp -d)"
+cp "$ROOT/package-lock.json" "$STAGE/" 2>/dev/null || true
+cp "$ROOT/package.json" "$STAGE/"
+(cd "$STAGE" && npm ci --omit=dev --ignore-scripts >/dev/null)
+cp -R "$STAGE/node_modules" "$SERVER_RES/node_modules"
+rm -rf "$STAGE"
+
 echo "==> codesign (identity: $IDENTITY)"
 codesign --force --deep -s "$IDENTITY" --identifier "$BUNDLE_ID" "$APP"
 
