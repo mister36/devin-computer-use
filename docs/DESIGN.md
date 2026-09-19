@@ -190,18 +190,27 @@ computer-use work happens inside it, never in a terminal:
   - `session/prompt {sessionId, prompt:[{type:"text",text}]}` → response `{stopReason}` ends the turn.
   - Agent → client notifications `session/update` with `sessionUpdate` in
     `agent_message_chunk | user_message_chunk | agent_thought_chunk | tool_call | tool_call_update | plan | usage_update | available_commands_update | current_mode_update`.
+    Devin CLI 3000.10.x also sends `config_option_update` (ignored) and
+    `session_info_update {title}` (adopted as the conversation title), plus
+    vendor notifications `_cognition.ai/*` (ignored).
   - Agent → client request `session/request_permission {toolCall, options:[{optionId,name,kind}]}`;
     the app answers `{outcome:{outcome:"selected",optionId}}` (or `cancelled` after
     `session/cancel`). With "Approve for me" on, the app auto-picks the first
     `allow_always` option, else `allow_once`.
   - `session/cancel` on Stop. If `agentCapabilities.loadSession` is true a
     reopened conversation calls `session/load`; otherwise it starts a fresh session.
+    The CLI answers `session/load` with `-32016 Session not found` for sessions it
+    no longer has (observed for sessions created without credentials), in which
+    case the app falls back to `session/new` and keeps the local transcript.
+    Unauthenticated, `initialize`/`session/new` succeed (the MCP server is even
+    spawned) and `session/prompt` fails with `-32000 Please log in to use Devin`.
 - Helper per-app approval ("Allow Devin to use Safari?") is shown as an inline
   card in the active conversation when the window is open, falling back to the
   `NSAlert` otherwise. The socket thread blocks on a semaphore until answered.
 - Onboarding pane (shown until every check passes): Devin CLI found
   (`~/.local/bin/devin` or `command -v devin` via `/bin/zsh -lc`), signed in
-  (`devin auth status` exit code), Node found, Accessibility, Screen Recording.
+  (`devin auth status` output — it exits 0 even when "Not logged in"), Node
+  found, Accessibility, Screen Recording.
   Each row has a fix button: "Install Devin CLI" runs
   `curl -fsSL https://cli.devin.ai/install.sh | bash` in-app with streamed
   output; "Sign in" opens Terminal with `devin auth login` (needs a TTY);

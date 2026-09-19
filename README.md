@@ -119,8 +119,10 @@ screenshot pixels.
   prompts per tool call. To pre-approve the read-only tools, allow
   `mcp__computer-use__list_apps`, `mcp__computer-use__get_app_state` and
   `mcp__computer-use__wait` individually in Devin's `permissions.allow` list.
-- The app is ad-hoc signed by default so TCC grants survive rebuilds while the
-  bundle id stays `ai.devin.computer-use.helper`. For distribution, sign with a
+- The app is ad-hoc signed by default (bundle id `ai.devin.computer-use.helper`);
+  every rebuild changes the cdhash, so Accessibility and Screen Recording must
+  be re-granted after `build-app` unless you set `CODESIGN_IDENTITY`. For
+  distribution, sign with a
   Developer ID and notarize (`xcrun notarytool`); the bundle is not sandboxed
   because the Accessibility API requires it.
 
