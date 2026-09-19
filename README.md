@@ -38,7 +38,7 @@ refused.
 
 ## Requirements
 
-- macOS 13+ with Xcode Command Line Tools (`xcode-select --install`)
+- macOS 14+ with Xcode Command Line Tools (`xcode-select --install`)
 - Node.js 20.19+ / 22.12+ / 24 and npm
 - Devin CLI
 
