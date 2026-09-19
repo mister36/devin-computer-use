@@ -347,12 +347,19 @@ final class ChatStore: ObservableObject {
 
         let existing = conversations.first { $0.id == conversationId }?.acpSessionId
         if let existing, loadSessionSupported {
-            _ = try await acpRequest("session/load", .object([
-                "sessionId": .string(existing),
-                "cwd": .string(cwd),
-                "mcpServers": mcpServers,
-            ]))
-            return existing
+            do {
+                _ = try await acpRequest("session/load", .object([
+                    "sessionId": .string(existing),
+                    "cwd": .string(cwd),
+                    "mcpServers": mcpServers,
+                ]))
+                return existing
+            } catch let error as ACPError {
+                // The CLI answers -32016 "Session not found" for sessions it no
+                // longer has; start a fresh one and keep the local transcript.
+                appendSystemNote("Previous Devin session unavailable (\(error.message)); starting a new one.",
+                                 to: conversationId)
+            }
         }
 
         let result = try await acpRequest("session/new", .object([
@@ -443,7 +450,11 @@ final class ChatStore: ObservableObject {
                     conv.items.append(.plan(entries: entries))
                 }
             }
-        case "usage_update", "available_commands_update", "current_mode_update":
+        case "session_info_update":
+            if let title = payload["title"]?.stringValue, !title.isEmpty {
+                update(conversationId) { $0.title = title }
+            }
+        case "usage_update", "available_commands_update", "current_mode_update", "config_option_update":
             break
         default:
             break
