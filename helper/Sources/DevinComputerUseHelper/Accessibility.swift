@@ -5,6 +5,11 @@ import Foundation
 // Accessibility tree reading, flattening and element caching.
 // All functions must be called on the main thread.
 
+// Private but long-stable HIServices symbol mapping an AXUIElement window to
+// its CGWindowID; not exposed in the SDK headers.
+@_silgen_name("_AXUIElementGetWindow")
+func _AXUIElementGetWindow(_ element: AXUIElement, _ windowId: UnsafeMutablePointer<CGWindowID>) -> AXError
+
 enum AX {
     static let maxDepthDefault = 25
     static let maxNodesDefault = 600
@@ -126,7 +131,7 @@ enum AppResolver {
             guard let app = NSRunningApplication(processIdentifier: pid) else {
                 throw HelperException("app_not_found", "No process with pid \(spec).")
             }
-            return makeResolved(app)
+            return try makeResolved(app)
         }
 
         if spec.contains(".") {

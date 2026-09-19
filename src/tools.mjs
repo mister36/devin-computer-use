@@ -42,6 +42,8 @@ function describeError(error, app) {
       return "That element is gone. Call get_app_state again for fresh element ids.";
     case "no_window":
       return `${name} has no windows. Open a window first.`;
+    case "permission_required":
+      return `${error.message} Ask the user to grant it, then retry.`;
     case "timeout":
     case "helper_unavailable":
       return error.message;

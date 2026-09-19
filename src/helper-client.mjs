@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
 import net from "node:net";
 import { homedir, platform } from "node:os";
 import { join } from "node:path";
@@ -28,16 +29,21 @@ export function defaultSocketPath({ home = homedir() } = {}) {
 
 function openApp() {
   const appPath = join(homedir(), "Applications", "Devin Computer Use.app");
-  const targets = [["-a", "Devin Computer Use"], ["-a", appPath]];
-  for (const args of targets) {
-    try {
-      execFile("open", args, { stdio: "ignore" });
-      return true;
-    } catch {
-      // try the next target
+  const targets = existsSync(appPath)
+    ? [[appPath], ["-a", "Devin Computer Use"]]
+    : [["-a", "Devin Computer Use"]];
+  const tryNext = () => {
+    const args = targets.shift();
+    if (!args) {
+      return;
     }
-  }
-  return false;
+    execFile("open", args, (error) => {
+      if (error) {
+        tryNext();
+      }
+    });
+  };
+  tryNext();
 }
 
 export class HelperClient {

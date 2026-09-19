@@ -259,7 +259,8 @@ async function openApp() {
   if (platform() !== "darwin") {
     throw new Error("open-app only works on macOS.");
   }
-  await runScript(["open", "-a", APP_NAME]);
+  const appPath = join(homedir(), "Applications", `${APP_NAME}.app`);
+  await runScript(existsSync(appPath) ? ["open", appPath] : ["open", "-a", APP_NAME]);
   console.log(`Requested ${APP_NAME}. Look for the status icon in the menu bar.`);
 }
 

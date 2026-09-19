@@ -13,8 +13,27 @@ enum Screenshot {
         CGPreflightScreenCaptureAccess()
     }
 
-    static func requestScreenRecording() {
-        CGRequestScreenCaptureAccess()
+    private static var requestedScreenRecording = false
+
+    /// Prompts the system Screen Recording dialog once per launch. Returns
+    /// whether access is currently granted.
+    @discardableResult
+    static func requestScreenRecording() -> Bool {
+        if CGPreflightScreenCaptureAccess() { return true }
+        if !requestedScreenRecording {
+            requestedScreenRecording = true
+            CGRequestScreenCaptureAccess()
+        }
+        return false
+    }
+
+    /// Prompts the system Accessibility dialog (which also registers the app
+    /// in System Settings > Privacy & Security > Accessibility). Returns
+    /// whether access is currently granted.
+    static func requestAccessibility() -> Bool {
+        if AXIsProcessTrusted() { return true }
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary
+        return AXIsProcessTrustedWithOptions(options)
     }
 
     /// Capture a window by CGWindowID, downscale the long edge to <= 1280 px,
@@ -40,8 +59,8 @@ enum Screenshot {
             }
         }
 
-        guard let bitmap = NSBitmapImageRep(cgImage: scaled),
-              let png = bitmap.representation(using: .png, properties: [:]) else { return nil }
+        let bitmap = NSBitmapImageRep(cgImage: scaled)
+        guard let png = bitmap.representation(using: .png, properties: [:]) else { return nil }
 
         let scale = windowBounds.width > 0
             ? Double(scaled.width) / Double(windowBounds.width)

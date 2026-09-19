@@ -63,20 +63,40 @@ enum Input {
         AXUIElementPerformAction(element, kAXPressAction as CFString) == .success
     }
 
+    // Control characters must be sent as their own key events: Cocoa's key
+    // binding manager treats an event whose characters start with \n or \t as
+    // a command (insertNewline:/insertTab:) and drops the remaining characters.
+    private static let controlKeys: [Character: CGKeyCode] = ["\n": 36, "\r": 36, "\r\n": 36, "\t": 48]
+
     static func typeText(pid: pid_t, text: String) {
-        // keyboardSetUnicodeString is limited to 20 UTF-16 units per event.
-        let utf16 = Array(text.utf16)
-        var index = 0
-        while index < utf16.count {
-            let end = min(index + 20, utf16.count)
-            let chunk = Array(utf16[index..<end])
-            for keyDown in [true, false] {
-                guard let event = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: keyDown) else { continue }
-                event.keyboardSetUnicodeString(stringLength: chunk.count, unicodeString: chunk)
-                post(event, to: pid)
+        var run: [UInt16] = []
+        func flush() {
+            // keyboardSetUnicodeString is limited to 20 UTF-16 units per event.
+            var index = 0
+            while index < run.count {
+                let end = min(index + 20, run.count)
+                let chunk = Array(run[index..<end])
+                for keyDown in [true, false] {
+                    guard let event = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: keyDown) else { continue }
+                    event.keyboardSetUnicodeString(stringLength: chunk.count, unicodeString: chunk)
+                    post(event, to: pid)
+                }
+                index = end
             }
-            index = end
+            run.removeAll()
         }
+        for character in text {
+            if let code = controlKeys[character] {
+                flush()
+                for keyDown in [true, false] {
+                    guard let event = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: keyDown) else { continue }
+                    post(event, to: pid)
+                }
+            } else {
+                run.append(contentsOf: character.utf16)
+            }
+        }
+        flush()
     }
 
     static func key(pid: pid_t, name: String, modifiers: [String]) throws {

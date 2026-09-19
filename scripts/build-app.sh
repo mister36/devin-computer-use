@@ -39,8 +39,27 @@ codesign --force --deep -s "$IDENTITY" --identifier "$BUNDLE_ID" "$APP"
 
 DEST="$HOME/Applications"
 mkdir -p "$DEST"
+if [[ -d "$DEST/$APP_NAME.app" ]]; then
+  # Quit any running copy so the new binary is what gets launched next.
+  pkill -x DevinComputerUseHelper 2>/dev/null || true
+fi
 rm -rf "$DEST/$APP_NAME.app"
 cp -R "$APP" "$DEST/"
+
+# Ad-hoc signatures are identified by TCC via the binary's cdhash, so every
+# rebuild invalidates previous Accessibility / Screen Recording grants while
+# System Settings keeps showing the stale toggle as "on". Clear the stale
+# entries so the helper prompts again cleanly.
+if [[ "$IDENTITY" == "-" ]]; then
+  tccutil reset Accessibility "$BUNDLE_ID" >/dev/null 2>&1 || true
+  tccutil reset ScreenCapture "$BUNDLE_ID" >/dev/null 2>&1 || true
+fi
+
+# Register with LaunchServices so `open -a "$APP_NAME"` resolves immediately.
+LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+if [[ -x "$LSREGISTER" ]]; then
+  "$LSREGISTER" -f "$DEST/$APP_NAME.app" >/dev/null 2>&1 || true
+fi
 
 cat <<EOF
 

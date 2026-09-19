@@ -39,6 +39,17 @@ Grant **Accessibility** and **Screen Recording** to "Devin Computer Use" when
 macOS prompts (System Settings → Privacy & Security). The helper lives in the
 menu bar and talks to the MCP server over a local Unix socket.
 
+Notes on the grants:
+
+- Screen Recording takes effect only after **Quit & Reopen** of the helper
+  (macOS requires it).
+- On macOS 15+, the first capture shows a system "bypass the system private
+  window picker" reminder — click **Allow**. It recurs periodically until the
+  helper moves to `SCScreenshotManager`.
+- Rebuilding the ad-hoc-signed app invalidates prior grants (TCC keys on the
+  binary's cdhash); `build-app.sh` resets them so macOS prompts cleanly after
+  the next launch. Signing with `CODESIGN_IDENTITY` avoids the reset.
+
 ```sh
 devin-computer-use install    # writes the MCP entry into Devin's config
 devin-computer-use doctor     # readiness check

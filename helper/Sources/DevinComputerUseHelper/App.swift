@@ -190,6 +190,10 @@ final class RequestHandler {
     /// Resolve the app param and pass it through the approval gate.
     private func gatedApp(_ request: HelperRequest) throws -> ResolvedApp {
         let spec = try requireString(request, "app")
+        guard Screenshot.requestAccessibility() else {
+            throw HelperException("permission_required",
+                                  "Accessibility access is not granted. Enable \"Devin Computer Use\" in System Settings > Privacy & Security > Accessibility.")
+        }
         let app = try AppResolver.resolve(spec)
         try Approval.shared.check(appName: app.name, bundleId: app.bundleId)
         return app
@@ -256,7 +260,8 @@ final class RequestHandler {
             "elements": .array(elements.map { .object($0.json) }),
             "truncated": .bool(truncated),
         ]
-        if wantScreenshot, let shot = Screenshot.captureWindow(info.id, windowBounds: info.bounds) {
+        if wantScreenshot, Screenshot.requestScreenRecording(),
+           let shot = Screenshot.captureWindow(info.id, windowBounds: info.bounds) {
             result["screenshot"] = .object(shot)
         }
         _ = window
