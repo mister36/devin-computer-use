@@ -41,15 +41,19 @@ enum Toolchain {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: devin)
         process.arguments = ["auth", "status"]
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
         do {
             try process.run()
         } catch {
             return false
         }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
-        return process.terminationStatus == 0
+        // `devin auth status` exits 0 even when logged out; inspect the text.
+        let output = String(decoding: data, as: UTF8.self).lowercased()
+        return process.terminationStatus == 0 && !output.contains("not logged in")
     }
 
     /// Path to the MCP server bundled inside the .app.

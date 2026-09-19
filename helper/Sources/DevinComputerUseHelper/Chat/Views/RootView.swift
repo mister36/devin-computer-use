@@ -141,7 +141,8 @@ final class OnboardingChecks: ObservableObject {
     private static func openDevinLogin() {
         let script = FileManager.default.temporaryDirectory
             .appendingPathComponent("devin-login.command")
-        try? "#!/bin/zsh\ndevin auth login\n".write(to: script, atomically: true, encoding: .utf8)
+        let devin = Toolchain.find("devin") ?? "devin"
+        try? "#!/bin/zsh\n\"\(devin)\" auth login\n".write(to: script, atomically: true, encoding: .utf8)
         try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: script.path)
         NSWorkspace.shared.open(script)
     }
