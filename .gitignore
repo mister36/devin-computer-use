@@ -1,0 +1,6 @@
+node_modules/
+helper/.build/
+*.bak
+dist/
+*.log
+.DS_Store

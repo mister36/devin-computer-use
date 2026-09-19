@@ -1,0 +1,26 @@
+{
+  "name": "devin-computer-use",
+  "version": "0.1.0",
+  "description": "Give Devin CLI computer use of any macOS app via the accessibility layer.",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "devin-computer-use": "./src/cli.mjs",
+    "devin-computer-use-server": "./src/server.mjs"
+  },
+  "scripts": {
+    "doctor": "node ./src/cli.mjs doctor",
+    "lint": "for f in src/*.mjs test/*.mjs bench/*.mjs; do node --check \"$f\" || exit 1; done",
+    "test": "node --test",
+    "build:app": "bash scripts/build-app.sh",
+    "bench": "node bench/run.mjs"
+  },
+  "engines": {
+    "node": ">=20.19"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "zod": "^4.0.0"
+  }
+}

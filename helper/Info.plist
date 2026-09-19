@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>ai.devin.computer-use.helper</string>
+    <key>CFBundleName</key>
+    <string>Devin Computer Use</string>
+    <key>CFBundleDisplayName</key>
+    <string>Devin Computer Use</string>
+    <key>CFBundleExecutable</key>
+    <string>DevinComputerUseHelper</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>LSMinimumSystemVersion</key>
+    <string>13.0</string>
+    <key>NSAccessibilityUsageDescription</key>
+    <string>Devin Computer Use reads app interfaces and performs actions you approve so Devin can help you in any app.</string>
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>Devin Computer Use captures screenshots of the app windows it operates.</string>
+</dict>
+</plist>
