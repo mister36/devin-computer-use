@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        installMainMenu()
         let hosting = NSHostingController(rootView: RootView())
         let window = NSWindow(contentViewController: hosting)
         window.title = "Devin Computer Use"
@@ -71,6 +72,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         // Warm the TCC prompts lazily: do not request permissions until the
         // first request needs them, but surface a clear status in the menu.
         statusMenuItem.title = statusLine()
+    }
+
+    private func installMainMenu() {
+        func add(_ menu: NSMenu, _ title: String, _ key: String, _ action: Selector?,
+                 _ modifiers: NSEvent.ModifierFlags = .command, target: AnyObject? = nil) {
+            let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
+            item.keyEquivalentModifierMask = modifiers
+            item.target = target
+            menu.addItem(item)
+        }
+
+        let mainMenu = NSMenu()
+
+        let appItem = NSMenuItem()
+        mainMenu.addItem(appItem)
+        let appMenu = NSMenu()
+        appItem.submenu = appMenu
+        add(appMenu, "Hide Devin Computer Use", "h", #selector(NSApplication.hide(_:)))
+        add(appMenu, "Hide Others", "h", #selector(NSApplication.hideOtherApplications(_:)), [.command, .option])
+        add(appMenu, "Show All", "", #selector(NSApplication.unhideAllApplications(_:)))
+        appMenu.addItem(.separator())
+        add(appMenu, "Quit Devin Computer Use", "q", #selector(quitApp), target: self)
+
+        let editItem = NSMenuItem()
+        mainMenu.addItem(editItem)
+        let editMenu = NSMenu(title: "Edit")
+        editItem.submenu = editMenu
+        add(editMenu, "Undo", "z", Selector(("undo:")))
+        add(editMenu, "Redo", "z", Selector(("redo:")), [.command, .shift])
+        editMenu.addItem(.separator())
+        add(editMenu, "Cut", "x", #selector(NSText.cut(_:)))
+        add(editMenu, "Copy", "c", #selector(NSText.copy(_:)))
+        add(editMenu, "Paste", "v", #selector(NSText.paste(_:)))
+        add(editMenu, "Paste and Match Style", "v", #selector(NSTextView.pasteAsPlainText(_:)),
+            [.command, .option, .shift])
+        add(editMenu, "Delete", "", #selector(NSText.delete(_:)))
+        add(editMenu, "Select All", "a", #selector(NSText.selectAll(_:)))
+
+        let windowItem = NSMenuItem()
+        mainMenu.addItem(windowItem)
+        let windowMenu = NSMenu(title: "Window")
+        windowItem.submenu = windowMenu
+        add(windowMenu, "Minimize", "m", #selector(NSWindow.performMiniaturize(_:)))
+        add(windowMenu, "Close", "w", #selector(NSWindow.performClose(_:)))
+
+        NSApp.mainMenu = mainMenu
+        NSApp.windowsMenu = windowMenu
     }
 
     private func statusLine() -> String {
