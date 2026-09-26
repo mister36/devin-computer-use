@@ -1,7 +1,8 @@
 # Devin Computer Use
 
-Give Devin CLI ChatGPT-style Computer Use on macOS: see and operate any app
-through the OS accessibility layer instead of driving Chrome over CDP.
+Give Devin CLI ChatGPT-style Computer Use on macOS with two backends: the OS
+accessibility layer for any native app, and a task-scoped Chrome extension for
+websites (below).
 
 A native desktop app uses the macOS Accessibility API (AXUIElement) to
 read UI trees and trigger actions, screen capture for window screenshots, and
@@ -35,6 +36,47 @@ Action tools return the post-action state, so "click and see what happened" is
 a single model round trip. Approval is per app ("Allow Devin to use Notes?
 Always allow"), not per tool call, and terminal applications are always
 refused.
+
+## Chrome browser tasks
+
+For web work there is a second, task-scoped path: an unpacked Chrome extension
+(`extension/`) plus a native messaging host (`src/browser-host.mjs`) that the
+MCP server reaches over a Unix socket at
+`~/.config/devin/browser/bridge.sock` (mode 0600). No remote debugging port and
+no Screen Recording grant are needed.
+
+Architecture: each MCP request travels `server → bridge.sock → Chrome's native
+messaging → extension service worker`. The extension only ever touches tabs it
+created for an approved task; your existing tabs are never adopted, and the
+`browser_*` tools never fall back to the desktop AX path.
+
+Setup:
+
+```sh
+# 1. Load extension/ as an unpacked extension in chrome://extensions and copy its ID.
+# 2. Register the native host (writes ~/.config/devin/browser + a Chrome manifest symlink):
+devin-computer-use install-browser --extension-id <extension-id>   # or: node src/cli.mjs install-browser ...
+# 3. Open the Devin Browser Tasks popup and press Connect.
+# 4. Restart your Devin/MCP session so the browser_* tools are registered.
+```
+
+Each `browser_start_task` appears in the extension popup; Devin can only use
+the task after you press **Allow**. To skip that per-task approval, enable
+**Auto-approve new tasks** in the popup — Devin still asks before sensitive
+actions. Approved tasks open background tabs inside
+a `Devin — <title>` tab group; `browser_state` returns a tab-targeted
+screenshot plus a bounded accessibility tree, and input tools require the
+latest `observationId`. If Chrome disconnects (extension reload, host exit),
+all tasks are revoked — press Connect again and start fresh tasks; an MCP
+restart is only needed to pick up new server code, not to reconnect the
+extension. Only one Chrome profile can be connected to the bridge at a time.
+
+Limitations: the debugger permission shows Chrome's "debugging this browser"
+infobar while attached; sites in background tabs may throttle media or pause
+stories; personal tabs can't be adopted; `browser_end_task` leaves the task's
+tabs and group open. The desktop app's bundled MCP server predates these
+tools — rebuilding it (`build-app`) to include them requires your approval
+because it resets TCC grants.
 
 ## Requirements
 

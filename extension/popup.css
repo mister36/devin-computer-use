@@ -1,0 +1,99 @@
+:root {
+  color-scheme: light;
+}
+body {
+  background: #ffffff;
+  color: #0f172a;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 13px;
+  width: 340px;
+  margin: 0;
+  padding: 14px;
+}
+h1 {
+  font-size: 15px;
+  margin: 0;
+}
+h2 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+  margin: 14px 0 6px;
+}
+.status {
+  margin: 4px 0 0;
+  font-weight: 600;
+}
+.status.connected {
+  color: #15803d;
+}
+.status.disconnected {
+  color: #b91c1c;
+}
+.error {
+  color: #b91c1c;
+  margin: 8px 0 0;
+  word-break: break-word;
+}
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+button {
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #f1f5f9;
+  color: inherit;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+button:hover {
+  background: #e2e8f0;
+}
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  margin: 10px 0 4px;
+}
+.toggle input {
+  margin: 0;
+}
+.scope {
+  color: #64748b;
+  margin: 0 0 8px;
+  line-height: 1.4;
+}
+.tasks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tasks li {
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 8px;
+}
+.task-title {
+  font-weight: 600;
+  margin: 0;
+}
+.task-url {
+  color: #64748b;
+  margin: 2px 0 6px;
+  word-break: break-all;
+}
+.task-buttons {
+  display: flex;
+  gap: 6px;
+}
+.empty {
+  color: #94a3b8;
+  font-style: italic;
+}

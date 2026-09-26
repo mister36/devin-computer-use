@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <link rel="stylesheet" href="popup.css">
+    <title>Devin Browser Tasks</title>
+  </head>
+  <body>
+    <header>
+      <h1>Devin Browser Tasks</h1>
+      <p id="status" class="status">Disconnected</p>
+    </header>
+    <p id="error" class="error" hidden></p>
+    <div class="actions">
+      <button id="connect" type="button">Connect</button>
+      <button id="disconnect" type="button">Disconnect &amp; Stop All</button>
+      <button id="refresh" type="button">Refresh</button>
+    </div>
+    <section>
+      <label class="toggle"><input id="auto-approve" type="checkbox"> Auto-approve new tasks</label>
+      <p class="scope">When on, new Devin tasks open their tab immediately without
+        waiting here; other tabs stay excluded; Devin still asks before sensitive
+        actions.</p>
+    </section>
+    <section>
+      <h2>Waiting for approval</h2>
+      <p class="scope">Allow Devin to read, capture, and interact with tabs created for this
+        task, including sites those tabs navigate to. Your other tabs are not included.
+        Review sensitive actions in Devin before proceeding.</p>
+      <ul id="pending" class="tasks"></ul>
+      <p id="no-pending" class="empty">No tasks waiting for approval.</p>
+    </section>
+    <section>
+      <h2>Active tasks</h2>
+      <ul id="active" class="tasks"></ul>
+      <p id="no-active" class="empty">No active tasks.</p>
+    </section>
+    <script type="module" src="popup.mjs"></script>
+  </body>
+</html>

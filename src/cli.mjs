@@ -16,6 +16,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 
+import { installBrowser } from "./browser-install.mjs";
 import { HelperClient, defaultSocketPath } from "./helper-client.mjs";
 
 const SERVER_NAME = "computer-use";
@@ -31,6 +32,7 @@ function usage() {
 
 Usage:
   devin-computer-use install [--project] [--force]
+  devin-computer-use install-browser --extension-id <id>
   devin-computer-use doctor [--project]
   devin-computer-use uninstall [--project] [--force]
   devin-computer-use build-app
@@ -284,6 +286,17 @@ async function main() {
 
   if (command === "install") {
     await install(options);
+  } else if (command === "install-browser") {
+    const idIndex = args.indexOf("--extension-id");
+    const extensionId = idIndex === -1 ? null : args[idIndex + 1];
+    const result = await installBrowser({ extensionId });
+    console.log(`Registered the Devin Browser Tasks native host for extension ${extensionId}.`);
+    console.log(`Wrapper: ${result.wrapperPath}`);
+    console.log(`Manifest: ${result.registerPath} -> ${result.manifestPath}`);
+    console.log("Next steps:");
+    console.log(`  1. Load the unpacked extension from ${result.extensionPath} in chrome://extensions.`);
+    console.log("  2. Open the Devin Browser Tasks popup and press Connect.");
+    console.log("  3. Restart your MCP server/Devin session to pick up the browser_* tools.");
   } else if (command === "doctor") {
     await doctor(options);
   } else if (command === "uninstall") {
