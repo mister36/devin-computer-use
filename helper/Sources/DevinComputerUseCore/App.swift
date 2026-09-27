@@ -3,6 +3,17 @@ import Darwin
 import Foundation
 import SwiftUI
 
+/// Entry point used by the executable target: installs the delegate and runs
+/// the AppKit loop.
+public func runHelperApp() -> Never {
+    let app = NSApplication.shared
+    app.setActivationPolicy(.regular) // dock icon + menu-bar status item
+    let delegate = AppDelegate()
+    app.delegate = delegate
+    app.run()
+    exit(0)
+}
+
 // Regular windowed app (dock icon + menu-bar status item): the main window
 // hosts the chat UI; the socket server keeps running when it is closed.
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
@@ -20,8 +31,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let hosting = NSHostingController(rootView: RootView())
         let window = NSWindow(contentViewController: hosting)
         window.title = "Devin Computer Use"
-        window.minSize = NSSize(width: 900, height: 600)
-        window.setContentSize(NSSize(width: 1000, height: 700))
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        window.minSize = NSSize(width: 860, height: 560)
+        window.setContentSize(NSSize(width: 1080, height: 760))
         window.delegate = self
         window.center()
         window.makeKeyAndOrderFront(nil)

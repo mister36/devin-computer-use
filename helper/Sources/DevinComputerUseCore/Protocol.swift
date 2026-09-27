@@ -25,7 +25,7 @@ struct HelperErrorBody: Codable {
     let message: String
 }
 
-struct HelperException: Error {
+struct HelperException: Error, LocalizedError {
     let code: String
     let message: String
 
@@ -33,6 +33,8 @@ struct HelperException: Error {
         self.code = code
         self.message = message
     }
+
+    var errorDescription: String? { message }
 }
 
 // Minimal untyped JSON value for request/response payloads.
