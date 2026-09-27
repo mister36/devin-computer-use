@@ -410,6 +410,7 @@ struct PlanView: View {
 struct ComposerView: View {
     @ObservedObject var store = ChatStore.shared
     @State private var draft = ""
+    @State private var newlineMonitor: Any?
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -466,6 +467,28 @@ struct ComposerView: View {
         .padding(.bottom, 12)
         .frame(maxWidth: 788)
         .frame(maxWidth: .infinity)
+        .onAppear(perform: startNewlineMonitor)
+        .onDisappear(perform: stopNewlineMonitor)
+    }
+
+    /// AppKit submits the field editor on any Return, so Shift+Return has to be
+    /// turned into a literal newline before the field sees it.
+    private func startNewlineMonitor() {
+        guard newlineMonitor == nil else { return }
+        newlineMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            guard focused,
+                  event.keyCode == 36,
+                  event.modifierFlags.contains(.shift),
+                  let editor = event.window?.firstResponder as? NSTextView
+            else { return event }
+            editor.insertNewlineIgnoringFieldEditor(nil)
+            return nil
+        }
+    }
+
+    private func stopNewlineMonitor() {
+        if let newlineMonitor { NSEvent.removeMonitor(newlineMonitor) }
+        newlineMonitor = nil
     }
 
     private var canSend: Bool {
