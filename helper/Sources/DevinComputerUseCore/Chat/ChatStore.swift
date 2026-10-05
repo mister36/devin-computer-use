@@ -2,8 +2,9 @@ import AppKit
 import Foundation
 
 // Chat state: conversations, ACP session management, permission and
-// app-approval cards. Everything runs on the main actor. The transcript itself
-// lives in Transcript.swift.
+// app-approval cards. Everything runs on the main actor. Each transcript lives
+// in its own TranscriptModel (loaded when the chat is opened); persistence is
+// in ConversationArchive.
 
 @MainActor
 final class ChatStore: ObservableObject {
@@ -33,10 +34,11 @@ final class ChatStore: ObservableObject {
     private var acpReady = false
     private var loadSessionSupported = false
     private var starting = false
+    private var sessions = ACPSessionTracker()
 
-    private var conversationsDir: URL {
-        Approval.shared.supportDir.appendingPathComponent("conversations", isDirectory: true)
-    }
+    private let archive = ConversationArchive(
+        directory: Approval.shared.supportDir.appendingPathComponent("conversations", isDirectory: true))
+    private var models: [String: TranscriptModel] = [:]
 
     var selected: Conversation? {
         conversations.first { $0.id == selectedId }
@@ -65,6 +67,7 @@ final class ChatStore: ObservableObject {
             MainActor.assumeIsolated {
                 guard let self else { return }
                 self.acpReady = false
+                self.sessions.reset()
                 self.queued.removeAll()
                 self.isRunning = false
                 self.appendSystemNote("Devin CLI exited (code \(code)).")
@@ -75,36 +78,57 @@ final class ChatStore: ObservableObject {
     // MARK: persistence
 
     private func loadConversations() {
-        try? FileManager.default.createDirectory(at: conversationsDir, withIntermediateDirectories: true)
-        let files = (try? FileManager.default.contentsOfDirectory(
-            at: conversationsDir, includingPropertiesForKeys: nil)) ?? []
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        conversations = files
-            .filter { $0.pathExtension == "json" }
-            .compactMap { try? decoder.decode(Conversation.self, from: Data(contentsOf: $0)) }
-            .sorted { $0.createdAt > $1.createdAt }
+        conversations = archive.loadIndex()
         selectedId = conversations.first?.id
     }
 
-    private func persist(_ conversation: Conversation) {
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        encoder.outputFormatting = [.prettyPrinted]
-        if let data = try? encoder.encode(conversation) {
-            try? data.write(to: conversationsDir.appendingPathComponent("\(conversation.id).json"),
-                            options: .atomic)
+    /// The observable transcript for a chat. Opening a chat reads it from disk
+    /// in the background so a long history never blocks the window.
+    func transcriptModel(for id: String) -> TranscriptModel {
+        if let model = models[id] { return model }
+        let model = TranscriptModel(conversationId: id)
+        models[id] = model
+        let archive = archive
+        Task.detached(priority: .userInitiated) {
+            let record = archive.readRecord(id: id)
+            await MainActor.run {
+                model.load(record?.transcript ?? Transcript())
+            }
         }
+        return model
+    }
+
+    /// The transcript, read synchronously if it is about to be written to.
+    private func loadedModel(_ id: String) -> TranscriptModel {
+        let model = transcriptModel(for: id)
+        if !model.isLoaded {
+            let record = archive.pendingRecord(id: id) ?? archive.readRecord(id: id)
+            model.load(record?.transcript ?? Transcript())
+        }
+        return model
+    }
+
+    private func persist(_ id: String) {
+        guard let conversation = conversations.first(where: { $0.id == id }) else { return }
+        archive.save(ConversationRecord(conversation: conversation, transcript: loadedModel(id).transcript))
+    }
+
+    /// Writes unsaved chats before the app quits.
+    func flushToDisk() {
+        archive.flush()
     }
 
     private func update(_ id: String, _ mutate: (inout Conversation) -> Void) {
         guard let index = conversations.firstIndex(where: { $0.id == id }) else { return }
         mutate(&conversations[index])
-        persist(conversations[index])
+        archive.saveIndex(conversations)
+        persist(id)
     }
 
     private func updateTranscript(_ id: String, _ mutate: (inout Transcript) -> Void) {
-        update(id) { mutate(&$0.transcript) }
+        guard conversations.contains(where: { $0.id == id }) else { return }
+        loadedModel(id).mutate(mutate)
+        persist(id)
     }
 
     // MARK: actions
@@ -117,15 +141,18 @@ final class ChatStore: ObservableObject {
             acpSessionId: nil
         )
         conversations.insert(conversation, at: 0)
+        models[conversation.id] = TranscriptModel(conversationId: conversation.id, transcript: Transcript())
         selectedId = conversation.id
-        persist(conversation)
+        archive.saveIndex(conversations)
+        persist(conversation.id)
     }
 
     func delete(conversationId: String) {
         queued.removeAll { $0.conversationId == conversationId }
         conversations.removeAll { $0.id == conversationId }
-        try? FileManager.default.removeItem(
-            at: conversationsDir.appendingPathComponent("\(conversationId).json"))
+        models.removeValue(forKey: conversationId)
+        archive.delete(id: conversationId)
+        archive.saveIndex(conversations)
         if selectedId == conversationId { selectedId = conversations.first?.id }
     }
 
@@ -214,6 +241,7 @@ final class ChatStore: ObservableObject {
                                   "Devin CLI is not installed. Install it from onboarding.")
         }
         if !acp.isRunning {
+            sessions.reset()
             try acp.start(devinPath: devinPath)
         }
         let result = try await acpRequest("initialize", .object([
@@ -248,15 +276,21 @@ final class ChatStore: ObservableObject {
         let cwd = FileManager.default.homeDirectoryForCurrentUser.path
 
         let existing = conversations.first { $0.id == conversationId }?.acpSessionId
+        if let existing, !sessions.needsLoad(existing) {
+            return existing
+        }
         if let existing, loadSessionSupported {
+            sessions.beginLoad(existing)
             do {
                 _ = try await acpRequest("session/load", .object([
                     "sessionId": .string(existing),
                     "cwd": .string(cwd),
                     "mcpServers": mcpServers,
                 ]))
+                sessions.finishLoad(existing, succeeded: true)
                 return existing
             } catch let error as ACPError {
+                sessions.finishLoad(existing, succeeded: false)
                 // The CLI answers -32016 "Session not found" for sessions it no
                 // longer has; start a fresh one and keep the local transcript.
                 appendSystemNote("Previous Devin session unavailable (\(error.message)); starting a new one.",
@@ -271,6 +305,7 @@ final class ChatStore: ObservableObject {
         guard let sessionId = result.objectValue?["sessionId"]?.stringValue else {
             throw HelperException("acp_error", "session/new did not return a sessionId.")
         }
+        sessions.markLive(sessionId)
         update(conversationId) { $0.acpSessionId = sessionId }
         return sessionId
     }
@@ -301,7 +336,10 @@ final class ChatStore: ObservableObject {
               let conversationId = conversations.first(where: { $0.acpSessionId == sessionId })?.id
         else { return }
 
-        if payload["sessionUpdate"]?.stringValue == "session_info_update" {
+        // The local transcript already holds what session/load replays.
+        let kind = payload["sessionUpdate"]?.stringValue ?? ""
+        guard sessions.accepts(update: kind, sessionId: sessionId) else { return }
+        if kind == "session_info_update" {
             if let title = payload["title"]?.stringValue, !title.isEmpty {
                 update(conversationId) { $0.title = title }
             }
