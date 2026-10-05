@@ -185,19 +185,22 @@ final class TranscriptTests: XCTestCase {
         """
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        let conversation = try decoder.decode(Conversation.self, from: Data(json.utf8))
-        XCTAssertEqual(texts(conversation.transcript), ["user: hi", "assistant: hello"])
-        XCTAssertFalse(conversation.transcript.entries[0].id.isEmpty)
+        let record = try decoder.decode(ConversationRecord.self, from: Data(json.utf8))
+        XCTAssertEqual(record.conversation.title, "Legacy")
+        XCTAssertEqual(texts(record.transcript), ["user: hi", "assistant: hello"])
+        XCTAssertFalse(record.transcript.entries[0].id.isEmpty)
     }
 
     func testConversationRoundTripsEntryIdentities() throws {
-        var conversation = Conversation(id: "c1", title: "t", createdAt: Date(), acpSessionId: "s1")
-        conversation.transcript.appendUserMessage("hi")
+        var record = ConversationRecord(
+            conversation: Conversation(id: "c1", title: "t", createdAt: Date(), acpSessionId: "s1"))
+        record.transcript.appendUserMessage("hi")
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        let decoded = try decoder.decode(Conversation.self, from: encoder.encode(conversation))
-        XCTAssertEqual(decoded.transcript.entries, conversation.transcript.entries)
+        let decoded = try decoder.decode(ConversationRecord.self, from: encoder.encode(record))
+        XCTAssertEqual(decoded.transcript.entries, record.transcript.entries)
+        XCTAssertEqual(decoded.conversation.acpSessionId, "s1")
     }
 }

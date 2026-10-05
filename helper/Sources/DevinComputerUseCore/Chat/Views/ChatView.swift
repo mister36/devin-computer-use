@@ -11,7 +11,13 @@ struct ChatView: View {
                 .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 280)
         } detail: {
             VStack(spacing: 0) {
-                TranscriptView(conversation: store.selected)
+                if let id = store.selected?.id {
+                    TranscriptView(model: store.transcriptModel(for: id))
+                        .id(id)
+                } else {
+                    EmptyStateView()
+                        .frame(maxHeight: .infinity, alignment: .top)
+                }
                 ComposerView()
             }
             .background(Color(nsColor: .textBackgroundColor))
@@ -57,25 +63,45 @@ struct SidebarView: View {
     }
 }
 
+/// Renders only the latest turns, like ChatGPT: older ones are paged in as
+/// the user scrolls up, so a long chat costs the same as a short one.
 struct TranscriptView: View {
-    let conversation: Conversation?
+    static let pageSize = 40
 
-    private var groups: [TranscriptGroup] {
-        (conversation?.transcript.entries ?? []).grouped()
-    }
+    @ObservedObject var model: TranscriptModel
+    @State private var visibleCount = TranscriptView.pageSize
+    @State private var pagingEnabled = false
 
     var body: some View {
+        let groups = model.groups
+        let start = max(0, groups.count - visibleCount)
+        let visible = Array(groups[start...])
+
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 14) {
-                    if groups.isEmpty { EmptyStateView() }
-                    ForEach(groups) { group in
-                        switch group {
-                        case .single(let entry):
-                            TranscriptItemView(item: entry.item)
-                        case .tools(let entries):
-                            ToolGroupView(entries: entries)
+                    if !model.isLoaded {
+                        ProgressView()
+                            .controlSize(.small)
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 80)
+                    } else if groups.isEmpty {
+                        EmptyStateView()
+                    } else if start > 0 {
+                        Button("Show earlier messages") {
+                            showEarlier(anchor: visible.first?.id, proxy: proxy)
                         }
+                        .buttonStyle(.link)
+                        .font(.caption)
+                        .frame(maxWidth: .infinity)
+                        .onAppear {
+                            if pagingEnabled { showEarlier(anchor: visible.first?.id, proxy: proxy) }
+                        }
+                    }
+                    ForEach(visible) { group in
+                        TranscriptGroupView(group: group)
+                            .equatable()
+                            .id(group.id)
                     }
                     Color.clear.frame(height: 1).id("bottom")
                 }
@@ -84,23 +110,42 @@ struct TranscriptView: View {
                 .padding(.vertical, 20)
                 .frame(maxWidth: .infinity)
             }
-            .onChange(of: conversation?.transcript.entries.count ?? 0) { _ in
-                withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo("bottom") }
+            .defaultScrollAnchor(.bottom)
+            .onAppear {
+                proxy.scrollTo("bottom", anchor: .bottom)
+                // Lazy rows are measured as they appear, so the first jump can
+                // land short; repeat it once layout settles, then let the top
+                // sentinel page in history.
+                DispatchQueue.main.async { proxy.scrollTo("bottom", anchor: .bottom) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    proxy.scrollTo("bottom", anchor: .bottom)
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { pagingEnabled = true }
             }
-            .onChange(of: lastTextLength) { _ in
-                proxy.scrollTo("bottom")
+            .onChange(of: model.revision) { _, _ in
+                proxy.scrollTo("bottom", anchor: .bottom)
             }
         }
     }
 
-    private var lastTextLength: Int {
-        guard let last = conversation?.transcript.entries.last?.item else { return 0 }
-        switch last {
-        case .assistantText(_, let text), .thought(let text), .systemNote(let text),
-             .userMessage(let text):
-            return text.count
-        default:
-            return 0
+    private func showEarlier(anchor: String?, proxy: ScrollViewProxy) {
+        visibleCount += Self.pageSize
+        guard let anchor else { return }
+        DispatchQueue.main.async { proxy.scrollTo(anchor, anchor: .top) }
+    }
+}
+
+/// One row of the transcript. Equatable so streaming into the last message
+/// does not re-evaluate (and re-parse) every other visible row.
+struct TranscriptGroupView: View, Equatable {
+    let group: TranscriptGroup
+
+    var body: some View {
+        switch group {
+        case .single(let entry):
+            TranscriptItemView(item: entry.item)
+        case .tools(let entries):
+            ToolGroupView(entries: entries)
         }
     }
 }
@@ -130,16 +175,22 @@ struct TranscriptItemView: View {
         case .userMessage(let text):
             HStack(alignment: .top) {
                 Spacer(minLength: 48)
-                Text(text)
-                    .textSelection(.enabled)
-                    .padding(.horizontal, 13)
-                    .padding(.vertical, 8)
-                    .background(Color.accentColor.opacity(0.14),
-                                in: RoundedRectangle(cornerRadius: 14))
-                    .frame(maxWidth: 560, alignment: .trailing)
+                VStack(alignment: .trailing, spacing: 3) {
+                    MessageCopyButton(text: text)
+                    Text(text)
+                        .textSelection(.enabled)
+                        .padding(.horizontal, 13)
+                        .padding(.vertical, 8)
+                        .background(Color.accentColor.opacity(0.14),
+                                    in: RoundedRectangle(cornerRadius: 14))
+                }
+                .frame(maxWidth: 560, alignment: .trailing)
             }
         case .assistantText(_, let text):
-            MarkdownView(text: text)
+            VStack(alignment: .leading, spacing: 3) {
+                MessageCopyButton(text: text)
+                MarkdownView(text: text)
+            }
         case .thought(let text):
             ThoughtView(text: text)
         case .toolCall(let id, let title, let kind, let status, let content):
@@ -158,6 +209,34 @@ struct TranscriptItemView: View {
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .center)
         }
+    }
+}
+
+/// Copies a whole message (raw text, so assistant markdown pastes intact).
+struct MessageCopyButton: View {
+    let text: String
+    @State private var copied = false
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: copy) {
+            Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                .font(.system(size: 11))
+                .frame(width: 20, height: 18)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(hovering || copied ? HierarchicalShapeStyle.primary : .secondary)
+        .onHover { hovering = $0 }
+        .help(copied ? "Copied" : "Copy message")
+        .accessibilityLabel(copied ? "Copied" : "Copy message")
+    }
+
+    private func copy() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        copied = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copied = false }
     }
 }
 
@@ -191,7 +270,8 @@ struct ThoughtView: View {
     }
 
     private var firstLine: String {
-        text.split(separator: "\n").first.map(String.init) ?? "Thinking"
+        let line = text.prefix { $0 != "\n" }
+        return line.isEmpty ? "Thinking" : String(line)
     }
 }
 
@@ -259,7 +339,7 @@ struct ToolCallRow: View {
                                 .textSelection(.enabled)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         case .image(let base64, _):
-                            if let data = Data(base64Encoded: base64), let image = NSImage(data: data) {
+                            if let image = ToolImageCache.image(base64) {
                                 Image(nsImage: image)
                                     .resizable()
                                     .aspectRatio(contentMode: .fit)
@@ -301,6 +381,23 @@ struct ToolCallRow: View {
         default:
             ProgressView().controlSize(.small).scaleEffect(0.6).frame(width: 12, height: 12)
         }
+    }
+}
+
+/// Decoding a screenshot on every redraw is expensive; decode each once.
+enum ToolImageCache {
+    private static let cache: NSCache<NSString, NSImage> = {
+        let cache = NSCache<NSString, NSImage>()
+        cache.countLimit = 64
+        return cache
+    }()
+
+    static func image(_ base64: String) -> NSImage? {
+        let key = base64 as NSString
+        if let image = cache.object(forKey: key) { return image }
+        guard let data = Data(base64Encoded: base64), let image = NSImage(data: data) else { return nil }
+        cache.setObject(image, forKey: key)
+        return image
     }
 }
 

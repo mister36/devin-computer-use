@@ -210,3 +210,39 @@ final class ACPClient {
         ])
     }
 }
+
+/// Which ACP sessions the running `devin acp` process already has in memory.
+/// `session/load` makes the agent replay the whole conversation, so it is only
+/// sent once per session per process, and the replay is not appended to a
+/// transcript that already holds those turns.
+struct ACPSessionTracker {
+    private(set) var live: Set<String> = []
+    private(set) var replaying: Set<String> = []
+
+    func needsLoad(_ sessionId: String) -> Bool {
+        !live.contains(sessionId)
+    }
+
+    mutating func beginLoad(_ sessionId: String) {
+        replaying.insert(sessionId)
+    }
+
+    mutating func finishLoad(_ sessionId: String, succeeded: Bool) {
+        replaying.remove(sessionId)
+        if succeeded { live.insert(sessionId) }
+    }
+
+    mutating func markLive(_ sessionId: String) {
+        live.insert(sessionId)
+    }
+
+    /// The process exited: nothing is loaded any more.
+    mutating func reset() {
+        live.removeAll()
+        replaying.removeAll()
+    }
+
+    func accepts(update kind: String, sessionId: String) -> Bool {
+        !replaying.contains(sessionId) || kind == "session_info_update"
+    }
+}

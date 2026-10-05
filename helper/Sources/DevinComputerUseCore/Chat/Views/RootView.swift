@@ -63,7 +63,7 @@ struct OnboardingView: View {
         .padding(28)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onAppear { checks.recheck() }
-        .onChange(of: checks.allPass) { pass in
+        .onChange(of: checks.allPass) { _, pass in
             if pass { ChatStore.shared.onboardingDone = true }
         }
     }

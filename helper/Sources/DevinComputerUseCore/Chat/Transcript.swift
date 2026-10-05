@@ -390,54 +390,70 @@ enum TranscriptGroup: Identifiable, Equatable {
 extension Array where Element == TranscriptEntry {
     func grouped() -> [TranscriptGroup] {
         var groups: [TranscriptGroup] = []
+        var pendingTools: [TranscriptEntry] = []
         for entry in self {
-            guard case .toolCall = entry.item else {
-                groups.append(.single(entry))
+            if case .toolCall = entry.item {
+                pendingTools.append(entry)
                 continue
             }
-            if case .tools(let pending) = groups.last {
-                groups[groups.count - 1] = .tools(pending + [entry])
-            } else {
-                groups.append(.tools([entry]))
+            if !pendingTools.isEmpty {
+                groups.append(.tools(pendingTools))
+                pendingTools.removeAll()
             }
+            groups.append(.single(entry))
         }
+        if !pendingTools.isEmpty { groups.append(.tools(pendingTools)) }
         return groups
     }
 }
 
+/// Sidebar metadata for one chat. Small and cheap to publish: the transcript
+/// lives in its own TranscriptModel so streaming never touches this list.
 struct Conversation: Codable, Identifiable, Equatable {
     let id: String
     var title: String
     let createdAt: Date
     var acpSessionId: String?
-    var transcript: Transcript
 
-    init(id: String, title: String, createdAt: Date, acpSessionId: String?,
-         transcript: Transcript = Transcript()) {
+    init(id: String, title: String, createdAt: Date, acpSessionId: String?) {
         self.id = id
         self.title = title
         self.createdAt = createdAt
         self.acpSessionId = acpSessionId
-        self.transcript = transcript
     }
 
-    enum CodingKeys: String, CodingKey { case id, title, createdAt, acpSessionId, items }
+    enum CodingKeys: String, CodingKey { case id, title, createdAt, acpSessionId }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.init(id: try c.decode(String.self, forKey: .id),
                   title: try c.decode(String.self, forKey: .title),
                   createdAt: try c.decode(Date.self, forKey: .createdAt),
-                  acpSessionId: try? c.decode(String.self, forKey: .acpSessionId),
+                  acpSessionId: try? c.decode(String.self, forKey: .acpSessionId))
+    }
+}
+
+/// On-disk shape of one chat (`conversations/<id>.json`): metadata plus items.
+struct ConversationRecord: Codable, Equatable {
+    var conversation: Conversation
+    var transcript: Transcript
+
+    init(conversation: Conversation, transcript: Transcript = Transcript()) {
+        self.conversation = conversation
+        self.transcript = transcript
+    }
+
+    enum CodingKeys: String, CodingKey { case items }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(conversation: try Conversation(from: decoder),
                   transcript: Transcript(entries: (try? c.decode([TranscriptEntry].self, forKey: .items)) ?? []))
     }
 
     func encode(to encoder: Encoder) throws {
+        try conversation.encode(to: encoder)
         var c = encoder.container(keyedBy: CodingKeys.self)
-        try c.encode(id, forKey: .id)
-        try c.encode(title, forKey: .title)
-        try c.encode(createdAt, forKey: .createdAt)
-        try c.encodeIfPresent(acpSessionId, forKey: .acpSessionId)
         try c.encode(transcript.entries, forKey: .items)
     }
 }

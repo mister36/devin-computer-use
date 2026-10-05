@@ -9,7 +9,7 @@ struct MarkdownView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            ForEach(Array(Markdown.blocks(text).enumerated()), id: \.offset) { _, block in
+            ForEach(Array(Markdown.cachedBlocks(text).enumerated()), id: \.offset) { _, block in
                 view(for: block)
             }
         }
@@ -70,7 +70,7 @@ struct MarkdownInlineText: View {
     var font: Font = .body
 
     var body: some View {
-        Markdown.inlineRuns(text)
+        Markdown.cachedInlineRuns(text)
             .reduce(Text("")) { $0 + styled($1) }
             .frame(maxWidth: .infinity, alignment: .leading)
             .fixedSize(horizontal: false, vertical: true)

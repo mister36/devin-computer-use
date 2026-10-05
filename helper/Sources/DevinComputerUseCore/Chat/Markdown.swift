@@ -305,10 +305,51 @@ extension Markdown {
         let needle = Array(token)
         guard !needle.isEmpty, start >= 0 else { return nil }
         var index = start
-        while index + needle.count <= characters.count {
-            if Array(characters[index..<(index + needle.count)]) == needle { return index }
-            index += 1
+        search: while index + needle.count <= characters.count {
+            for offset in needle.indices where characters[index + offset] != needle[offset] {
+                index += 1
+                continue search
+            }
+            return index
         }
         return nil
+    }
+}
+
+// MARK: parse cache
+
+extension Markdown {
+    private final class Box<Value>: NSObject {
+        let value: Value
+        init(_ value: Value) { self.value = value }
+    }
+
+    private static let blockCache: NSCache<NSString, Box<[MarkdownBlock]>> = {
+        let cache = NSCache<NSString, Box<[MarkdownBlock]>>()
+        cache.countLimit = 400
+        return cache
+    }()
+
+    private static let inlineCache: NSCache<NSString, Box<[MarkdownInlineRun]>> = {
+        let cache = NSCache<NSString, Box<[MarkdownInlineRun]>>()
+        cache.countLimit = 4000
+        return cache
+    }()
+
+    /// `blocks(_:)`, memoized: rows scrolled back into view are not re-parsed.
+    static func cachedBlocks(_ source: String) -> [MarkdownBlock] {
+        let key = source as NSString
+        if let hit = blockCache.object(forKey: key) { return hit.value }
+        let value = blocks(source)
+        blockCache.setObject(Box(value), forKey: key)
+        return value
+    }
+
+    static func cachedInlineRuns(_ text: String) -> [MarkdownInlineRun] {
+        let key = text as NSString
+        if let hit = inlineCache.object(forKey: key) { return hit.value }
+        let value = inlineRuns(text)
+        inlineCache.setObject(Box(value), forKey: key)
+        return value
     }
 }
